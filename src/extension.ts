@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import { PNG } from 'pngjs';
 
 const ENDPOINT = 'http://98.85.228.131:8000/api/v1/analyze/image';
-const API_KEY = 'm1n1m4p-pesquisa-2026!';
+const API_KEY = 'm1n1m4p-pesquisa-2025';
 
 const IMAGE_WIDTH = 128;
 const IMAGE_HEIGHT = 128;
@@ -39,6 +39,161 @@ export function activate(context: vscode.ExtensionContext): void {
 export function deactivate(): void {}
 
 
+async function showAnalysisResult(result: {
+    projectName: string;
+    relativePath: string;
+    fileHash: string;
+    apiResponse: ApiResponse;
+}): Promise<void> {
+    const panel = vscode.window.createWebviewPanel(
+        'sourceCodeMinimapsResult',
+        'SourceCodeMinimaps Result',
+        vscode.ViewColumn.Beside,
+        {
+            enableScripts: false
+        }
+    );
+
+    panel.webview.html = buildAnalysisResultHtml(result);
+}
+
+function buildAnalysisResultHtml(result: {
+    projectName: string;
+    relativePath: string;
+    fileHash: string;
+    apiResponse: ApiResponse;
+}): string {
+    const groupsHtml = result.apiResponse.predict.map(group => {
+        const predictionsHtml = group.predictions.map(prediction => {
+            const percent = (prediction.confidence * 100).toFixed(2);
+
+            return `
+                <div class="prediction-row">
+                    <span class="class-name">${escapeHtml(prediction.class)}</span>
+                    <span class="confidence">${percent}%</span>
+                </div>
+                <div class="bar">
+                    <div class="bar-fill" style="width: ${percent}%"></div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <section class="card">
+                <h2>${escapeHtml(group.target)}</h2>
+                ${predictionsHtml}
+            </section>
+        `;
+    }).join('');
+
+    return `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {
+                    font-family: var(--vscode-font-family);
+                    color: var(--vscode-foreground);
+                    background: var(--vscode-editor-background);
+                    padding: 24px;
+                }
+
+                h1 {
+                    margin-top: 0;
+                    font-size: 22px;
+                }
+
+                .meta {
+                    padding: 14px;
+                    border: 1px solid var(--vscode-panel-border);
+                    border-radius: 10px;
+                    margin-bottom: 18px;
+                    background: var(--vscode-sideBar-background);
+                }
+
+                .meta div {
+                    margin: 6px 0;
+                }
+
+                .grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                    gap: 16px;
+                }
+
+                .card {
+                    border: 1px solid var(--vscode-panel-border);
+                    border-radius: 12px;
+                    padding: 16px;
+                    background: var(--vscode-sideBar-background);
+                }
+
+                .card h2 {
+                    margin-top: 0;
+                    text-transform: capitalize;
+                    font-size: 18px;
+                }
+
+                .prediction-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-top: 12px;
+                    font-size: 14px;
+                }
+
+                .class-name {
+                    font-weight: 600;
+                }
+
+                .confidence {
+                    opacity: 0.85;
+                }
+
+                .bar {
+                    height: 8px;
+                    border-radius: 999px;
+                    background: var(--vscode-editorWidget-background);
+                    overflow: hidden;
+                    margin-top: 5px;
+                }
+
+                .bar-fill {
+                    height: 100%;
+                    background: var(--vscode-progressBar-background);
+                }
+
+                code {
+                    word-break: break-all;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>SourceCodeMinimaps Analysis</h1>
+
+            <div class="meta">
+                <div><strong>Project:</strong> ${escapeHtml(result.projectName)}</div>
+                <div><strong>File:</strong> <code>${escapeHtml(result.relativePath)}</code></div>
+                <div><strong>MD5:</strong> <code>${escapeHtml(result.fileHash)}</code></div>
+                <div><strong>Returned hash:</strong> <code>${escapeHtml(result.apiResponse.hash)}</code></div>
+            </div>
+
+            <div class="grid">
+                ${groupsHtml}
+            </div>
+        </body>
+        </html>
+    `;
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
 
 async function saveMinimapImageForDevelopment(
     fileHash: string,
@@ -228,7 +383,7 @@ async function sendMinimapToApi(requestPayload: {
     return await response.json() as ApiResponse;
 }
 
-async function showAnalysisResult(result: {
+async function showAnalysisResultInDoc(result: {
     projectName: string;
     relativePath: string;
     fileHash: string;
